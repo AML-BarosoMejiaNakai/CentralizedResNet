@@ -97,7 +97,7 @@ class DownsampleBlock(nn.Module):
         y = self.model(x)
         if self.residual:
             if self.option == 'A':
-                shortcut = functional.pad(x[:, :, ::2, ::2], (0, 0, 0, 0, self.in_channels//4, self.in_channels//4), "constant", 0)
+                shortcut = functional.pad(x[:, :, ::2, ::2], (0, 0, 0, 0, self.out_channels//4, self.out_channels//4), "constant", 0)
                 y += shortcut
             else:
                 raise ValueError("Not supported")
@@ -114,7 +114,7 @@ downsample
 XX
 XX
 
-self.in_channels//4
+self.out_channels//4
 
 0000
 0XX0
