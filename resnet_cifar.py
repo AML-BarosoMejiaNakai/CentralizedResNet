@@ -34,12 +34,13 @@ class BasicBlock(nn.Module):
     - Class that represents a basic block on the ResNet architecture, 
       composed of 2 convolutional layers with a Normalization and Activation layer between those
     '''
-    def __init__(self, in_channels, in_size, residual=True) -> None:
+    def __init__(self, in_channels, in_size, residual=True, norm_type="BATCH") -> None:
         '''
         ## PARAMS
         - in_channels: Number of channels for the block
         - in_size: Size (width or height) of one square sample
         - residual: Whether to add a residual connection or not
+        - norm_type: Which type of normalization to use - "BATCH" or "GROUP"
         '''
         super().__init__()
         self.in_channels = in_channels
@@ -48,10 +49,10 @@ class BasicBlock(nn.Module):
 
         self.model = nn.Sequential(
             conv3_stride1(in_channels, in_channels),
-            nn.BatchNorm2d(in_channels),
+            nn.BatchNorm2d(in_channels) if norm_type == "BATCH" else nn.GroupNorm(2, in_channels),
             nn.ReLU(),
             conv3_stride1(in_channels, in_channels),
-            nn.BatchNorm2d(in_channels)
+            nn.BatchNorm2d(in_channels) if norm_type == "BATCH" else nn.GroupNorm(2, in_channels)
         )
 
     def forward(self, x):
@@ -66,13 +67,14 @@ class DownsampleBlock(nn.Module):
     - Class that represents a basic block responsible for downsampling on the ResNet architecture, 
       composed of 2 convolutional layers (one with stride 2 and other with stride 1) with a Normalization and Activation layer between those
     '''
-    def __init__(self, in_channels, in_size, residual=True, option='A') -> None:
+    def __init__(self, in_channels, in_size, residual=True, option='A', norm_type="BATCH") -> None:
         '''
         ## PARAMS
         - in_channels: Number of channels for the block
         - in_size: Size (width or height) of one square sample
         - residual: Whether to add a residual connection or not
         - option: Way to create the downsample residual connection (A or B)
+        - norm_type: Which type of normalization to use - "BATCH" or "GROUP"
         '''
         super().__init__()
         self.in_channels = in_channels
@@ -84,10 +86,15 @@ class DownsampleBlock(nn.Module):
 
         self.model = nn.Sequential(
             conv3_stride2(in_channels, self.out_channels),
-            nn.BatchNorm2d(self.out_channels),
+            nn.BatchNorm2d(self.out_channels) if norm_type == "BATCH" else nn.GroupNorm(2, self.out_channels),
             nn.ReLU(),
             conv3_stride1(self.out_channels, self.out_channels),
-            nn.BatchNorm2d(self.out_channels)
+            nn.BatchNorm2d(self.out_channels) if norm_type == "BATCH" else nn.GroupNorm(2, self.out_channels)
+        )
+
+        self.shortcut = nn.Sequential(
+            nn.Conv2d(in_channels, self.out_channels, kernel_size=1, stride=2, bias=False),
+            nn.BatchNorm2d(self.out_channels) if norm_type == "BATCH" else nn.GroupNorm(2, self.out_channels)
         )
 
     def forward(self, x):
@@ -100,7 +107,8 @@ class DownsampleBlock(nn.Module):
                 shortcut = functional.pad(x[:, :, ::2, ::2], (0, 0, 0, 0, self.out_channels//4, self.out_channels//4), "constant", 0)
                 y += shortcut
             else:
-                raise ValueError("Not supported")
+                shortcut = self.shortcut(x)
+                y += shortcut  
         return functional.relu(y)
 
 '''
@@ -126,25 +134,28 @@ self.out_channels//4
     
 
 class ResNet20(nn.Module):
-    def __init__(self, num_blocks, num_classes=100):
+    def __init__(self, num_blocks, num_classes=100, option='A', norm_type="BATCH"):
         '''
         ResNet20 implementation
         ### PARAMS
         - num_blocks: Number of basic blocks composing the network
         - num_classes: Number of outputs of the network
+        - option: Type of shortcut on downsample blocks (A: Padding, B: Conv layer)
+        - norm_type: Which type of normalization to use - "BATCH" or "GROUP"
         '''
         super().__init__()  
         self.num_blocks = num_blocks
+        self.norm_type = norm_type
         
         self.conv1 = conv3_stride1(3, 16)
-        self.bn1 = nn.BatchNorm2d(16)
+        self.norm1 = nn.BatchNorm2d(self.out_channels) if norm_type == "BATCH" else nn.GroupNorm(2, self.out_channels)
         
         # Layer 1 (32x32x16) -> Layer 2 (16x16x32) -> Layer 3 (8x8x64) -> AvgPool (8x8) -> FC (64 x num_classes)
-        self.layer1 = nn.Sequential(*[BasicBlock(16, 32) for _ in range(self.num_blocks)])
-        self.downsample1 = DownsampleBlock(16, 32)
-        self.layer2 = nn.Sequential(*[BasicBlock(32, 16) for _ in range(self.num_blocks-1)])
-        self.downsample2 = DownsampleBlock(32, 16)
-        self.layer3 = nn.Sequential(*[BasicBlock(64, 8)  for _ in range(self.num_blocks-1)])
+        self.layer1 = nn.Sequential(*[BasicBlock(16, 32, norm_type) for _ in range(self.num_blocks)])
+        self.downsample1 = DownsampleBlock(16, 32, option=option, norm_type=norm_type)
+        self.layer2 = nn.Sequential(*[BasicBlock(32, 16, norm_type) for _ in range(self.num_blocks-1)])
+        self.downsample2 = DownsampleBlock(32, 16, option=option, norm_type=norm_type)
+        self.layer3 = nn.Sequential(*[BasicBlock(64, 8, norm_type)  for _ in range(self.num_blocks-1)])
         self.avgpool = nn.AvgPool2d(kernel_size=(8,8), stride=(1,1))
         self.fc = nn.Linear(64, num_classes) # Fully connected layer
         self.softmax = nn.Softmax()
@@ -154,7 +165,8 @@ class ResNet20(nn.Module):
     def forward(self, x):
         
         x = self.conv1(x)
-        x = self.bn1(x)
+        x = self.norm1(x)
+        x = functional.relu(x)
         
         # =========================== #
 
@@ -169,6 +181,6 @@ class ResNet20(nn.Module):
         x = self.avgpool(x)           # Average pooling 8x8
         x = x.reshape(x.shape[0], -1) # Flatten to 64
         x = self.fc(x)                # Fully connected 100
-        x = self.softmax(x)
+        #x = self.softmax(x)
 
         return x
