@@ -185,6 +185,6 @@ class ResNet20(nn.Module):
 
         return x
 
-#    no softmax | softmax  
-# BN     0.6499     |    O
-# GN      0      |    0
+# acc cosineLR  | cosineWR  
+# BN   0.6499   |  0.5681
+# GN   0.6301   |  0.5330
