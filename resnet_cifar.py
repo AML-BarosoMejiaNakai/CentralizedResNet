@@ -148,14 +148,14 @@ class ResNet20(nn.Module):
         self.norm_type = norm_type
         
         self.conv1 = conv3_stride1(3, 16)
-        self.norm1 = nn.BatchNorm2d(self.out_channels) if norm_type == "BATCH" else nn.GroupNorm(2, self.out_channels)
+        self.norm1 = nn.BatchNorm2d(16) if norm_type == "BATCH" else nn.GroupNorm(2, 16)
         
         # Layer 1 (32x32x16) -> Layer 2 (16x16x32) -> Layer 3 (8x8x64) -> AvgPool (8x8) -> FC (64 x num_classes)
-        self.layer1 = nn.Sequential(*[BasicBlock(16, 32, norm_type) for _ in range(self.num_blocks)])
+        self.layer1 = nn.Sequential(*[BasicBlock(16, 32, norm_type=norm_type) for _ in range(self.num_blocks)])
         self.downsample1 = DownsampleBlock(16, 32, option=option, norm_type=norm_type)
-        self.layer2 = nn.Sequential(*[BasicBlock(32, 16, norm_type) for _ in range(self.num_blocks-1)])
+        self.layer2 = nn.Sequential(*[BasicBlock(32, 16, norm_type=norm_type) for _ in range(self.num_blocks-1)])
         self.downsample2 = DownsampleBlock(32, 16, option=option, norm_type=norm_type)
-        self.layer3 = nn.Sequential(*[BasicBlock(64, 8, norm_type)  for _ in range(self.num_blocks-1)])
+        self.layer3 = nn.Sequential(*[BasicBlock(64, 8, norm_type=norm_type)  for _ in range(self.num_blocks-1)])
         self.avgpool = nn.AvgPool2d(kernel_size=(8,8), stride=(1,1))
         self.fc = nn.Linear(64, num_classes) # Fully connected layer
         self.softmax = nn.Softmax()
@@ -184,3 +184,7 @@ class ResNet20(nn.Module):
         #x = self.softmax(x)
 
         return x
+
+#    no softmax | softmax  
+# BN     0.6499     |    O
+# GN      0      |    0
