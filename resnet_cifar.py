@@ -111,27 +111,6 @@ class DownsampleBlock(nn.Module):
                 y += shortcut  
         return functional.relu(y)
 
-'''
-XYXY
-YYYY
-XYXY
-YYYY
-
-downsample
-
-XX
-XX
-
-self.out_channels//4
-
-0000
-0XX0
-0XX0
-0000
-
-'''
-
-    
 
 class ResNet20(nn.Module):
     def __init__(self, num_blocks, num_classes=100, option='A', norm_type="BATCH"):
@@ -184,7 +163,3 @@ class ResNet20(nn.Module):
         #x = self.softmax(x)
 
         return x
-
-# acc cosineLR  | cosineWR  
-# BN   0.6499   |  0.5681
-# GN   0.6301   |  0.5330
